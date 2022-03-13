@@ -1,0 +1,109 @@
+---
+title: "COVID-19 Project -- Generate z scores for Odor thershold, Chemesthesis, Task Switch"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r LoadData}
+knitr::opts_chunk$set(
+	fig.align = "center",
+	fig.show = "hold",
+	fig.showtext = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	comment = NA,
+	results = "hold",
+	tidy = F
+)
+library(bruceR)
+library(psych)
+library(ggpubr)
+library(gridExtra)
+library(tidyr)
+library(kableExtra)
+library(knitr)
+
+########## read data
+data <- read.csv("...",header = TRUE)
+
+########## define variable names
+demoinfo <- c("Group","NUM","GEN","EDU","AGE","AgeGroup","SMOKE","DRINK","reCAT","RTDATE","reRT")
+testcat <- c("OT","Tri","SwitchCost")
+
+########## generate dataset for this analysis
+data <- data[,c(demoinfo, testcat)]
+subrows <- rownames(data)
+
+########## generate different subsets
+patientdata <- data[data$Group == 1,]#exclude the asymptomatic cases
+controldata <- data[data$Group == 0,]
+
+SavePath <- "..."
+timsta <- format(Sys.time(),format = "%m%d%H%M")
+
+
+```
+# ***** Generate z Scores *****
+## 1. Generate Bootstrap DataFrame
+```{r bootstrap, eval=TRUE}
+# Substitute task name when needed in testcat
+TestsBoot <- data.frame(Tests = testcat, RepTim = numeric(length(testcat)), AG1_Mean = numeric(length(testcat)), AG1_SD = numeric(length(testcat)), AG2_Mean = numeric(length(testcat)), AG2_SD = numeric(length(testcat)), AG3_Mean = numeric(length(testcat)), AG3_SD = numeric(length(testcat)), AG4_Mean = numeric(length(testcat)), AG4_SD = numeric(length(testcat)), AG5_Mean = numeric(length(testcat)), AG5_SD = numeric(length(testcat)))#AG stands for age group
+SamPoNum <- as.data.frame(table(controldata$AgeGroup))
+colnames(SamPoNum) <- c("AgeGroup","Number")
+RepTim <- 1000
+TestsBoot$RepTim <- RepTim
+tempdata <- data.frame(Mean=numeric(),SD=numeric())
+for (testn in 1:length(testcat)) {
+  #Extract Control Data to Bootstrap
+    oridata <- controldata[,c("AgeGroup",testcat[testn])]
+  # Age Group
+  for (agn in 1:5) {
+        agdata <- oridata[oridata$AgeGroup == agn,testcat[testn]]
+      # Bootstrap
+      for (repn in 1:RepTim) {
+      sampleseq<- sample(1:length(agdata),SamPoNum[SamPoNum$AgeGroup==agn,"Number"],replace = TRUE)
+      tempdata[repn,"Mean"] <- mean(agdata[sampleseq],na.rm = TRUE)
+      tempdata[repn,"SD"] <- sd(agdata[sampleseq],na.rm = TRUE)
+      }
+      TestsBoot[testn,paste0("AG",agn,"_Mean",collapse = NULL)] <- mean(tempdata$Mean,na.rm = TRUE)
+      TestsBoot[testn,paste0("AG",agn,"_SD",collapse = NULL)] <- mean(tempdata$SD,na.rm = TRUE)
+  }
+}
+```
+## 2. Calculate Z scores for patients and controls
+```{r prepare_data}
+# prepare dataframe z_data, all variables need to calculate were saved to z_data
+z_data <- data[,c(demoinfo,testcat)]
+# directly calculate z scores 
+for (testn in 1:length(testcat)) {
+    for (subn in 1:length(subrows)) {
+    z_data[subrows[subn],testcat[testn]] <- (data[subrows[subn],testcat[testn]]-TestsBoot[TestsBoot$Tests==testcat[testn],paste0("AG", data[subrows[subn],"AgeGroup"], "_Mean", collapse = NULL)])/TestsBoot[TestsBoot$Tests==testcat[testn],paste0("AG", data[subrows[subn],"AgeGroup"], "_SD", collapse = NULL)]
+    }
+}
+```
+
+## 3. Save
+```{r export,eval=True}
+# save bootstrap results
+ExcelFileName <- paste0("data_otherTasks_",timsta,".csv", collapse = NULL)
+ExcelFilePath <- paste0(SavePath,ExcelFileName,collapse = NULL)
+write.csv(data,ExcelFilePath)
+# save bootstrap results
+ExcelFileName <- paste0("Bootstrap_otherTasks_",timsta,".csv", collapse = NULL)
+ExcelFilePath <- paste0(SavePath,ExcelFileName,collapse = NULL)
+write.csv(TestsBoot,ExcelFilePath)
+# save z score
+ExcelFilePath <- paste0(SavePath,"z_score_otherTasks_",timsta,".csv",collapse = NULL)
+write.csv(z_data,ExcelFilePath)
+```
+
+
+
+
+
+
+

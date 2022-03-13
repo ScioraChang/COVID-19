@@ -1,0 +1,155 @@
+---
+title: "COVID-19 Project -- Generate z scores for follow-up2"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+> __OTHER COMMENTS__
+ 
+```{r LoadData}
+knitr::opts_chunk$set(
+	fig.align = "center",
+	fig.show = "hold",
+	fig.showtext = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	comment = NA,
+	results = "hold",
+	tidy = F
+)
+library(bruceR)
+library(psych)
+library(ggpubr)
+library(gridExtra)
+library(tidyr)
+library(kableExtra)
+library(knitr)
+
+########## read data
+data <- read.csv("...",header = TRUE)
+OlfBoot <- read.csv("...",header = TRUE)
+MoCABoot <- read.csv("...",header = TRUE)
+BDIBoot <- read.csv("...",header = TRUE)
+OtherBoot <- read.csv("...",header = TRUE)
+
+########## split subjects into different age groups
+data$AgeGroup[data$AGE<=39] <- 1
+data$AgeGroup[data$AGE>39&data$AGE<=49] <- 2
+data$AgeGroup[data$AGE>49&data$AGE<=59] <- 3
+data$AgeGroup[data$AGE>59&data$AGE<=69] <- 4
+data$AgeGroup[data$AGE>69] <- 5
+
+########## define variable names
+demoinfo <- c("TestLab","Group","NUM","GEN","EDU","AGE","AgeGroup","SMOKE","DRINK")
+OlfLab <- c("OI")
+MoCALab <- c("MoCA")
+BDILAB <- c("BDI.SF")
+Others <- c("Tri")
+testcat = c(OlfLab, MoCALab,BDILab,Others)
+
+########## generate dataset for this analysis
+data <- data[data$TestLab == 2,c(demoinfo, testcat)]
+
+
+########## generate different subsets
+patientdata <- data[data$TestLab == 2,]
+subrows <- rownames(patientdata)
+
+SavePath <- "..."
+timsta <- format(Sys.time(),format = "%m%d%H%M")
+
+
+```
+# ***** Generate z Scores *****
+## 1. Regress 
+```{r createdataset}
+data_reg <- data[data$TestLab == 2,c(demoinfo,testcat)]
+lm_regress_p <- list()
+Bs <- data.frame(tasks=testcat)
+```
+#### ** in OI & MoCA
+```{r regEDU, eval=TRUE}
+# Sort
+regtasklist <- c(OlfLab, MoCALab)
+oridata_patient <- patientdata[,c("NUM","EDU","AgeGroup",regtasklist)] 
+# Regression
+for (taskn in 1:length(regtasklist)) {
+  names(oridata_patient)[names(oridata_patient) == regtasklist[taskn]] <- "TEST"
+  lm_regress_p[[regtasklist[taskn]]] <- lm(TEST~AgeGroup + EDU, oridata_patient)
+  Bs[Bs$tasks==regtasklist[taskn],"AGE_patient"] <- as.data.frame(lm_regress_p[[regtasklist[taskn]]]$coefficients)["AgeGroup",1]
+  Bs[Bs$tasks==regtasklist[taskn],"EDU_patient"] <- as.data.frame(lm_regress_p[[regtasklist[taskn]]]$coefficients)["EDU",1]
+  names(oridata_patient)[names(oridata_patient) == "TEST"] <- regtasklist[taskn]
+  B_EDU <- as.data.frame(lm_regress_p[[regtasklist[taskn]]]$coefficients)["EDU",1]
+  for (subn in 1:length(subrows)) {
+      data_reg[subrows[subn],regtasklist[taskn]] <-  data[subrows[subn],regtasklist[taskn]] - B_EDU * (data[subrows[subn],"EDU"] - 12.23177)
+    }
+}
+```
+#### ** in BDI.SF
+```{r regEDU&DRINK, eval=TRUE}
+# Sort
+lm_regress_p <- list()
+oridata_patient <- patientdata[,c("NUM","GEN","EDU","DRINK","AgeGroup",testcat)] 
+oridata_control <- controldata[,c("NUM","GEN","EDU","DRINK","AgeGroup",testcat)]
+Bs <- data.frame(tasks=testcat)
+# Regression
+for (taskn in 1:length(testcat)) {
+  names(oridata_patient)[names(oridata_patient) == testcat[taskn]] <- "TEST"
+  lm_regress_p[[testcat[taskn]]] <- lm(TEST~AgeGroup+EDU+DRINK, oridata_patient)
+  Bs[taskn,"AGE_patient"] <- as.data.frame(lm_regress_p[[testcat[taskn]]]$coefficients)["AgeGroup",1]
+  Bs[taskn,"EDU_patient"] <- as.data.frame(lm_regress_p[[testcat[taskn]]]$coefficients)["EDU",1]
+  Bs[taskn,"DRINK_patient"] <- as.data.frame(lm_regress_p[[testcat[taskn]]]$coefficients)["DRINK",1]
+  names(oridata_patient)[names(oridata_patient) == "TEST"] <- testcat[taskn]
+  for (subn in 1:length(subrows)) {
+    if (data[subrows[subn],"Group"]==1){
+      B_EDU <- as.data.frame(lm_regress_p[[testcat[taskn]]]$coefficients)["EDU",1]
+      B_DRINK <- as.data.frame(lm_regress_p[[testcat[taskn]]]$coefficients)["DRINK",1]
+      data_reg[subrows[subn],testcat[taskn]] <-  data[subrows[subn],testcat[taskn]] - B_EDU * (data[subrows[subn],"EDU"] - 12.23177) - B_DRINK * (data[subrows[subn],"DRINK"] - 0)
+    }
+  }
+}
+```
+## 2. Adjust overflow values
+```{r adjust}
+data_reg$OI[data_reg$OI > 18] <- 18
+data_reg$MoCA[data_reg$MoCA > 30] <- 30
+data_reg$BDI.SF[data_reg$BDI.SF > 39] <- 39
+data_reg$OI[data_reg$OI < 0] <- 0
+data_reg$MoCA[data_reg$MoCA <0] <- 0
+data_reg$BDI.SF[data_reg$BDI.SF < 0] <- 0
+```
+## 3. Merge Bootstrap DataFrame
+```{r bootstrap, eval=TRUE}
+TestsBoot <- rbind(OlfBoot, MoCABoot)
+TestsBoot <- rbind(TestsBoot, BDIBoot)
+TestsBoot <- rbind(TestsBoot, OtherBoot)
+```
+## 4. Calculate Z scores for patients and controls
+```{r prepare_data}
+# prepare dataframe z_data, all variables need to calculate were saved to z_data
+z_data <- patientdata[,c(demoinfo,testcat)]
+# directly calculate z scores 
+for (testn in 1:length(testcat)) {
+    for (subn in 1:length(subrows)) {
+    z_data[subrows[subn],testcat[testn]] <- (data_reg[subrows[subn],testcat[testn]]-TestsBoot[TestsBoot$Tests==testcat[testn],paste0("AG", data_reg[subrows[subn],"AgeGroup"], "_Mean", collapse = NULL)])/TestsBoot[TestsBoot$Tests==testcat[testn],paste0("AG", data_reg[subrows[subn],"AgeGroup"], "_SD", collapse = NULL)]
+    }
+}
+```
+## 5. Save
+```{r export,eval=TRUE}
+# save Bs
+ExcelFilePath <- paste0(SavePath,"Bs_retest2021_",timsta,".csv",collapse = NULL)
+write.csv(Bs,ExcelFilePath)
+# save reg data
+ExcelFilePath <- paste0(SavePath,"reg_data_retest2021_",timsta,".csv",collapse = NULL)
+write.csv(data_reg,ExcelFilePath)
+# save z score
+ExcelFilePath <- paste0(SavePath,"z_score_retest2021_",timsta,".csv",collapse = NULL)
+write.csv(z_data,ExcelFilePath)
+```
+
+
+
+
+

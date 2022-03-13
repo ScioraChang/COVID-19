@@ -1,0 +1,143 @@
+---
+title: "COVID-19 Project -- Generate z scores for follow-up 1"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r LoadData}
+knitr::opts_chunk$set(
+	fig.align = "center",
+	fig.show = "hold",
+	fig.showtext = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	comment = NA,
+	results = "hold",
+	tidy = F
+)
+library(bruceR)
+library(psych)
+library(ggpubr)
+library(gridExtra)
+library(tidyr)
+library(kableExtra)
+library(knitr)
+
+########## read data
+data <- read.csv("...",header = TRUE)
+OlfBoot <- read.csv("...",header = TRUE)
+GusBoot <- read.csv("...",header = TRUE)
+
+########## split subjects into different age groups
+data$AgeGroup[data$AGE<=39] <- 1
+data$AgeGroup[data$AGE>39&data$AGE<=49] <- 2
+data$AgeGroup[data$AGE>49&data$AGE<=59] <- 3
+data$AgeGroup[data$AGE>59&data$AGE<=69] <- 4
+data$AgeGroup[data$AGE>69] <- 5
+
+########## define variable names
+demoinfo <- c("Group","NUM","GEN","EDU","AGE","AgeGroup","SMOKE","DRINK","TestLab")
+OlfLab <- c("OT","OD")
+GusLab <- c("Gus")
+testcat <- c(OlfLab,GusLab)
+
+########## generate dataset for this analysis
+data <- data[data$TestLab == 2,c(demoinfo, testcat)]
+
+
+########## generate different subsets
+patientdata <- data[data$TestLab == 2,]
+subrows <- rownames(patientdata)
+
+SavePath <- "..."
+timsta <- format(Sys.time(),format = "%m%d%H%M")
+
+
+```
+# ***** Generate z Scores *****
+## 1. Regress 
+```{r createdataset}
+data_reg <- data[data$TestLab == 2,c(demoinfo,testcat)]
+lm_regress_p <- list()
+```
+#### ** in OD
+```{r regDRINK, eval=TRUE}
+# Sort
+regtasklist <- c("OD")
+Bs <- data.frame(tasks=regtasklist)
+oridata_patient <- patientdata[,c("NUM","SMOKE","DRINK","AgeGroup",regtasklist)] 
+Bs[1,"tasks"] <- "OD"
+# Regression
+for (taskn in 1:length(regtasklist)) {
+  names(oridata_patient)[names(oridata_patient) == regtasklist[taskn]] <- "TEST"
+  lm_regress_p[[regtasklist[taskn]]] <- lm(TEST~AgeGroup + DRINK, oridata_patient)
+  Bs[1,"AGE_patient"] <- as.data.frame(lm_regress_p[[regtasklist[taskn]]]$coefficients)["AgeGroup",1]
+  Bs[1,"DRINK_patient"] <- as.data.frame(lm_regress_p[[regtasklist[taskn]]]$coefficients)["DRINK",1]
+  names(oridata_patient)[names(oridata_patient) == "TEST"] <- regtasklist[taskn]
+  B_DRINK <- as.data.frame(lm_regress_p[[regtasklist[taskn]]]$coefficients)["DRINK",1]
+  for (subn in 1:length(subrows)) {
+      data_reg[subrows[subn],regtasklist[taskn]] <-  data[subrows[subn],regtasklist[taskn]] - B_DRINK * (data[subrows[subn],"DRINK"] - 0)
+    }
+}
+```
+#### ** in Gus
+```{r regSMOKE, eval=TRUE}
+# Sort
+regtasklist <- c("Gus")
+oridata_patient <- patientdata[,c("NUM","SMOKE","EDU","AgeGroup",regtasklist)] 
+# Regression
+for (taskn in 1:length(regtasklist)) {
+  names(oridata_patient)[names(oridata_patient) == regtasklist[taskn]] <- "TEST"
+  lm_regress_p[[regtasklist[taskn]]] <- lm(TEST~AgeGroup + EDU + SMOKE, oridata_patient)
+  Bs[2,"AGE_patient"] <- as.data.frame(lm_regress_p[[regtasklist[taskn]]]$coefficients)["AgeGroup",1]
+  Bs[2,"EDU_patient"] <- as.data.frame(lm_regress_p[[regtasklist[taskn]]]$coefficients)["EDU",1]
+  Bs[2,"SMOKE_patient"] <- as.data.frame(lm_regress_p[[regtasklist[taskn]]]$coefficients)["SMOKE",1]
+  names(oridata_patient)[names(oridata_patient) == "TEST"] <- regtasklist[taskn]
+  B_EDU <- as.data.frame(lm_regress_p[[regtasklist[taskn]]]$coefficients)["EDU",1]  
+  B_SMOKE <- as.data.frame(lm_regress_p[[regtasklist[taskn]]]$coefficients)["SMOKE",1]  
+  for (subn in 1:length(subrows)) {
+      data_reg[subrows[subn],regtasklist[taskn]] <-  data[subrows[subn],regtasklist[taskn]] - B_EDU * (data[subrows[subn],"EDU"] - 12.23177) - B_SMOKE * (data[subrows[subn],"SMOKE"] - 0)
+  }
+}
+```
+## 2. Adjust overflow values
+```{r adjust}
+data_reg$OD[data_reg$OD > 10] <- 10
+data_reg$Gus[data_reg$Gus > 5] <- 5
+```
+## 3. Merge Bootstrap DataFrame
+```{r bootstrap, eval=TRUE}
+TestsBoot <- rbind(OlfBoot,GusBoot)
+```
+## 4. Calculate Z scores for patients
+```{r prepare_data}
+# prepare dataframe z_data, all variables need to calculate were saved to z_data
+z_data <- patientdata[,c(demoinfo,testcat)]
+# directly calculate z scores 
+for (testn in 1:length(testcat)) {
+    for (subn in 1:length(subrows)) {
+    z_data[subrows[subn],testcat[testn]] <- (data_reg[subrows[subn],testcat[testn]]-TestsBoot[TestsBoot$Tests==testcat[testn],paste0("AG", data_reg[subrows[subn],"AgeGroup"], "_Mean", collapse = NULL)])/TestsBoot[TestsBoot$Tests==testcat[testn],paste0("AG", data_reg[subrows[subn],"AgeGroup"], "_SD", collapse = NULL)]
+    }
+}
+```
+## 5. Save
+```{r export,eval=TRUE}
+# save Bs
+ExcelFilePath <- paste0(SavePath,"Bs_retest2020_",timsta,".csv",collapse = NULL)
+write.csv(Bs,ExcelFilePath)
+# save reg data
+ExcelFilePath <- paste0(SavePath,"reg_data_retest2020_",timsta,".csv",collapse = NULL)
+write.csv(data_reg,ExcelFilePath)
+# save z score
+ExcelFilePath <- paste0(SavePath,"z_score_retest2020_",timsta,".csv",collapse = NULL)
+write.csv(z_data,ExcelFilePath)
+```
+
+
+
+
+

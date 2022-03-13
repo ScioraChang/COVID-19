@@ -1,0 +1,859 @@
+---
+title: "COVID-19 Figures"
+output: html_notebook
+---
+
+> __Remarks__
+
+* 210119
+* Use the Bootstrap results to plot figures
+* #006633-green; #226688-blue; #554433-brown; #CC66CC-pink
+* 210302
+* Add MoCA into the patient and control comparison figures
+* 210322
+* Use new generated data to plot
+* 210911
+* Revised gustation and d prime
+* 210922
+* After adjusting scores into a reasonable range, replot the main figures.
+* 211030
+* Add violin graph in sup.figure3
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	fig.align = "center",
+	fig.show = "hold",
+	fig.showtext = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	comment = NA,
+	results = "hold",
+	tidy = F
+)
+library(bruceR)
+library(psych)
+library(ggpubr)
+library(gridExtra)
+library(ppcor)
+library(tidyr)
+library(Rmisc)
+library(kableExtra)
+library(knitr)
+library(ggunchained)
+
+########## read data
+data <- read.csv("/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/Data_210822.csv",header = TRUE)
+z_data_Olfaction <- read.csv("/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/02_SplitedRCode/01_DataTable/03_zScoresUsed/z_score_Olfaction_09201220.csv")
+z_data_Gustation <- read.csv("/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/02_SplitedRCode/01_DataTable/03_zScoresUsed/z_score_taste.acc_09201205.csv")
+z_data_MoCA <- read.csv("/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/02_SplitedRCode/01_DataTable/03_zScoresUsed/z_score_MoCA_09210950.csv",header = TRUE)
+z_data_OtherTasks <- read.csv("/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/02_SplitedRCode/01_DataTable/03_zScoresUsed/z_score_OtherTasks.csv",header = TRUE)
+z_data_retest2 <- read.csv("/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/02_SplitedRCode/01_DataTable/03_zScoresUsed/z_score_retest2.csv",header = TRUE)
+z_data_retest3 <- read.csv("/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/02_SplitedRCode/01_DataTable/03_zScoresUsed/z_score_retest3.csv",header = TRUE)
+z_data_asyptomatic <- read.csv("/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/02_SplitedRCode/01_DataTable/03_zScoresUsed/z_score_asymptomatic.csv", header = TRUE)
+Violin_data <- read.csv("/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/02_SplitedRCode/01_DataTable/03_zScoresUsed/z_score_retest_violin.csv", header = TRUE)
+
+
+z_data <- merge(z_data_Olfaction, z_data_Gustation)
+z_data <- merge(z_data,z_data_MoCA)
+z_data <- merge(z_data,z_data_OtherTasks)
+
+
+########## generate different subsets
+patientdata <- data[data$Group == 1,]
+controldata <- data[data$Group == 0,]
+
+
+SavePath <- "/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/02_SplitedRCode/04_Figures/"
+
+```
+
+# Figure for short version
+## 1. Patient and Control Comparison
+```{r all_tasks}
+# Prepare Dataset
+plotlabels <- c("OLFACTION","OT","OD","OI","Gus","Tri","MoCA","Language","Memory","Visualspatial","Orientation","Abstraction","d","SwitchCost","BDI.II")
+plotdata <- z_data[z_data$Group==1,c("Group","NUM","reCAT",plotlabels)]#Only extract patient data
+plotsta_con <- data.frame(tests=character(),mean=numeric(),se=numeric())
+plotsta_con[1:length(plotlabels),"tests"] <- plotlabels
+plotsta_all <- data.frame(tests=character(),mean=numeric(),se=numeric())
+plotsta_all[1:length(plotlabels),"tests"] <- plotlabels
+plotsta_sev <- data.frame(tests=character(),mean2=numeric(),se2=numeric(),mean3=numeric(),se3=numeric())#number stands for severity
+plotsta_sev[1:length(plotlabels),"tests"] <- plotlabels
+for (n in 1:length(plotlabels)) {
+  sta_con <- summarySE(z_data[z_data$Group==0,c("Group","NUM","reCAT",plotlabels)],measurevar = plotlabels[n],groupvars = NULL,na.rm = TRUE)  
+  sta_all <- summarySE(plotdata,measurevar = plotlabels[n],groupvars = NULL,na.rm = TRUE)
+  sta_sev <- summarySE(plotdata,measurevar = plotlabels[n],groupvars = "reCAT",na.rm = TRUE)
+  plotsta_con[n,"mean"] <- sta_con[,plotlabels[n]]
+  plotsta_con[n,"se"] <- sta_con[,"se"]
+  plotsta_all[n,"mean"] <- sta_all[,plotlabels[n]]
+  plotsta_all[n,"se"] <- sta_all[,"se"]
+  plotsta_sev[n,"mean2"] <- sta_sev[1,plotlabels[n]]
+  plotsta_sev[n,"se2"] <- sta_sev[1,"se"]  
+  plotsta_sev[n,"mean3"] <- sta_sev[2,plotlabels[n]]
+  plotsta_sev[n,"se3"] <- sta_sev[2,"se"] 
+}
+# draw graph
+plotsta_con$tests <- factor(plotsta_con$tests,levels = rev(plotlabels),ordered = TRUE)
+plotsta_all$tests <- factor(plotsta_all$tests,levels = rev(plotlabels),ordered = TRUE)
+plotsta_sev$tests <- factor(plotsta_sev$tests,levels = rev(plotlabels),ordered = TRUE)
+AllTasks <- ggplot(plotsta_all, aes(x=mean, y = tests))+
+  # aesthetic settings
+    geom_vline(xintercept=0, colour="black", linetype="dashed")+
+    scale_x_continuous(expand = c(0,0),limits = c(-1.1,1.1))+
+    ylab("")+xlab("")+
+    theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())+
+  # controls
+    geom_point(data = plotsta_con, inherit.aes = FALSE, aes(x = mean, y = tests), size = 2.5, alpha = 1, colour = "black")+
+    geom_errorbar(data = plotsta_con, aes(y = tests,xmin = mean-se ,xmax = mean+se),size = 0.2,width = 0)+
+  # all patients
+    geom_bar(data = plotsta_all,stat="identity",inherit.aes = FALSE, aes(x = mean, y = tests), colour = "gray")+
+    geom_errorbar(data = plotsta_all, aes(y = tests,xmin = mean-se ,xmax = mean+se),size = 0.2,width = 0)+
+  # severity
+    geom_point(data = plotsta_sev, inherit.aes = FALSE, aes(x = mean2, y = tests),size = 2.5,alpha = 1,colour = "blue")+
+    geom_errorbar(data = plotsta_sev, inherit.aes = FALSE, aes(y = tests,xmin = mean2-se2 ,xmax = mean2+se2), size = 0.2,width = 0,colour = "blue",alpha = 1)+
+    geom_point(data = plotsta_sev, inherit.aes = FALSE, aes(x = mean3, y = tests),size = 2.5,alpha = 1,colour = "firebrick4")+
+    geom_errorbar(data = plotsta_sev, inherit.aes = FALSE, aes(y = tests,xmin = mean3-se3, xmax = mean3+se3), size = 0.2,width = 0,colour = "firebrick4",alpha=1)
+print(AllTasks)
+
+
+ggsave(paste0(SavePath,"AllTests_0922.eps") , width = 5, height = 5) 
+
+```
+
+## 2. Gustation Accuracy
+```{r gustation}
+Gus_label <- c("sour","sweet","bitter","salty","umami")
+Gus_corlabel <- c("c_sour","c_sweet","c_bitter","c_salty","c_umami")
+library(fmsb)
+gus_p <- colMeans(patientdata[,Gus_corlabel],na.rm = TRUE)
+gus_c <- colMeans(controldata[,Gus_corlabel],na.rm = TRUE)
+gusdata <- as.data.frame(matrix(nrow = 4 , ncol=5))
+colnames(gusdata) <- Gus_label
+rownames(gusdata) <- c("1","2","Patient","Contol")
+gusdata[1,] <- rep(1,5)
+gusdata[2,] <- rep(0.6,5)
+gusdata[3,] <- gus_p
+gusdata[4,] <- gus_c
+colors_border=c("#990033","#666666")
+colors_in=c( rgb(0.9,0.0,0.3,0.2), rgb(0.6,0.6,0.6,0.2) )
+#x11()
+radarchart( gusdata , axistype=1 , 
+    #custom polygon
+    pcol=colors_border , pfcol=colors_in , plwd=1 , plty=1,
+    #custom the grid
+    cglcol="black", cglty=3, axislabcol="grey", caxislabels=seq(60,100,10),cglwd=0.6,
+    #custom label
+    vlcex=0.8 
+    ) 
+legend(x=0.9, y=1.3, legend = rownames(gusdata[-c(1,2),]), bty = "n", pch=20 , col=colors_border , text.col = "grey", cex=1.2, pt.cex=2)
+#dev.copy(postscript, file=paste0(SavePath,"GUS_accuracy.eps"), height=6, width=6,horizontal=F, onefile=F) 
+dev.off
+```
+## 3. Domains in MoCA
+```{r}
+domain_label <- c("Language","Memory","Abstraction","Orientation","Visualspatial")
+library(fmsb)
+domain_p <- colMeans(z_data[z_data$Group==1,domain_label],na.rm = TRUE)
+domain_c <- colMeans(z_data[z_data$Group==0,domain_label],na.rm = TRUE)
+domaindata <- as.data.frame(matrix(nrow = 4 , ncol=5))
+colnames(domaindata) <- domain_label
+rownames(domaindata) <- c("1","2","Patient","Contol")
+domaindata[1,] <- rep(0.1,5)
+domaindata[2,] <- rep(-0.3,5)
+domaindata[3,] <- domain_p
+domaindata[4,] <- domain_c
+colors_border=c("#990033","#666666")
+colors_in=c( rgb(0.9,0.0,0.3,0.2), rgb(0.6,0.6,0.6,0.2) )
+#x11()
+radarchart( domaindata , axistype=1 , 
+    #custom polygon
+    pcol=colors_border , pfcol=colors_in , plwd=1 , plty=1,
+    #custom the grid
+    cglcol="black", cglty=3, axislabcol="grey", caxislabels=seq(-0.3,0.1,5),cglwd=0.6,
+    #custom label
+    vlcex=0.8 
+    ) 
+legend(x=0.9, y=1.3, legend = rownames(gusdata[-c(1,2),]), bty = "n", pch=20 , col=colors_border , text.col = "grey", cex=1.2, pt.cex=2)
+dev.copy(postscript, file=paste0(SavePath,"cog_domain.eps"), height=6, width=6,horizontal=F, onefile=F) 
+dev.off
+```
+### score percentage plot
+#### AGE
+```{r}
+domain_label <- c("Language","Memory","Abstraction","Orientation","Visualspatial")
+# calculate data regressed age and education
+demoinfo <- c("Group","NUM","GEN","EDU","AGE","AgeGroup")
+subrows <- rownames(data)
+MoCAdata <- data[,c(demoinfo, domain_label)]
+MoCAdata$Language <- as.integer(data$Language)
+MoCAdata$Memory <- as.integer(data$Memory)
+MoCA_reg <- MoCAdata
+oridata_patient <- patientdata[,c("NUM","GEN","EDU","AGE",domain_label)] 
+oridata_control <- controldata[,c("NUM","GEN","EDU","AGE",domain_label)]
+oridata_patient$Language <- as.integer(patientdata$Language)
+oridata_patient$Memory <- as.integer(patientdata$Memory)
+oridata_control$Language <- as.integer(controldata$Language)
+oridata_control$Memory <- as.integer(controldata$Memory)
+lm_regress_p <- list()
+lm_regress_c <- list()
+Bs_MoCA <- data.frame(tasks=domain_label)
+# Regression
+for (taskn in 1:length(domain_label)) {
+  names(oridata_patient)[names(oridata_patient) == domain_label[taskn]] <- "TEST"
+  names(oridata_control)[names(oridata_control) == domain_label[taskn]] <- "TEST"
+  lm_regress_p[[domain_label[taskn]]] <- lm(TEST~AGE+EDU, oridata_patient)
+  lm_regress_c[[domain_label[taskn]]] <- lm(TEST~AGE+EDU, oridata_control)
+  Bs_MoCA[taskn,"AGE_patient"] <- as.data.frame(lm_regress_p[[domain_label[taskn]]]$coefficients)["AGE",1]
+  Bs_MoCA[taskn,"AGE_control"] <- as.data.frame(lm_regress_c[[domain_label[taskn]]]$coefficients)["AGE",1] 
+  Bs_MoCA[taskn,"EDU_patient"] <- as.data.frame(lm_regress_p[[domain_label[taskn]]]$coefficients)["EDU",1]
+  Bs_MoCA[taskn,"EDU_control"] <- as.data.frame(lm_regress_c[[domain_label[taskn]]]$coefficients)["EDU",1]  
+  names(oridata_patient)[names(oridata_patient) == "TEST"] <- domain_label[taskn]
+  names(oridata_control)[names(oridata_control) == "TEST"] <- domain_label[taskn]
+  for (subn in 1:length(subrows)) {
+    # Patient
+    if (data[subrows[subn],"Group"]==1){
+      B_AGE <- Bs_MoCA[Bs_MoCA$tasks==domain_label[taskn],"AGE_patient"]
+      B_EDU <- Bs_MoCA[Bs_MoCA$tasks==domain_label[taskn],"EDU_patient"]
+      MoCA_reg[subrows[subn],domain_label[taskn]] <-  MoCAdata[subrows[subn],domain_label[taskn]] - B_EDU * (MoCAdata[subrows[subn],"EDU"] - 12.23177) - B_AGE * (MoCAdata[subrows[subn],"AGE"] - 54)
+    }
+    # Control
+    else {
+      B_AGE <- Bs_MoCA[Bs_MoCA$tasks==domain_label[taskn],"AGE_control"]
+      B_EDU <- Bs_MoCA[Bs_MoCA$tasks==domain_label[taskn],"EDU_control"]
+      MoCA_reg[subrows[subn],domain_label[taskn]] <-  MoCAdata[subrows[subn],domain_label[taskn]] - B_EDU * (MoCAdata[subrows[subn],"EDU"] - 12.23177) - B_AGE * (MoCAdata[subrows[subn],"AGE"] - 54)
+    }
+    }
+}
+MoCA_reg$Visualspatial[MoCA_reg$Visualspatial > 4] <- 4
+MoCA_reg$Abstraction[MoCA_reg$Abstraction > 2] <- 2
+MoCA_reg$Orientation[MoCA_reg$Orientation > 6] <- 6
+MoCA_reg$Language[MoCA_reg$Language > 6] <- 6
+MoCA_reg$Memory[MoCA_reg$Memory > 10] <- 10
+MoCA_reg$Visualspatial[MoCA_reg$Visualspatial < 0] <- 0
+MoCA_reg$Abstraction[MoCA_reg$Abstraction < 0] <- 0
+MoCA_reg$Orientation[MoCA_reg$Orientation <0] <- 0
+MoCA_reg$Language[MoCA_reg$Language <0] <- 0
+MoCA_reg$Memory[MoCA_reg$Memory <0] <- 0
+
+MoCA_reg$Language <- MoCA_reg$Language/6
+MoCA_reg$Memory <- MoCA_reg$Memory/10
+MoCA_reg$Abstraction <- MoCA_reg$Abstraction/2
+MoCA_reg$Orientation <- MoCA_reg$Orientation/6
+MoCA_reg$Visualspatial <- MoCA_reg$Visualspatial/4
+```
+```{r}
+library(fmsb)
+domain_p <- colMeans(MoCA_reg[MoCA_reg$Group==1&MoCA_reg$AGE>=50,domain_label],na.rm = TRUE)
+domain_c <- colMeans(MoCA_reg[MoCA_reg$Group==0&MoCA_reg$AGE>=50,domain_label],na.rm = TRUE)
+domaindata <- as.data.frame(matrix(nrow = 4 , ncol=5))
+colnames(domaindata) <- domain_label
+rownames(domaindata) <- c("1","2","Patient","Contol")
+domaindata[1,] <- rep(1,5)
+domaindata[2,] <- rep(0,5)
+domaindata[3,] <- domain_p
+domaindata[4,] <- domain_c
+colors_border=c("#990033","#666666")
+colors_in=c( rgb(0.9,0.0,0.3,0), rgb(0.6,0.6,0.6,0) )
+#x11()
+radarchart( domaindata , axistype=1 , 
+    #custom polygon
+    pcol=colors_border , pfcol=colors_in , plwd=1 , plty=1,
+    #custom the grid
+    cglcol="black", cglty=3, axislabcol="grey", caxislabels=seq(0,100,25),cglwd=0.6,
+    #custom label
+    vlcex=0.8 
+    ) 
+legend(x=0.9, y=1.3, legend = rownames(domaindata[-c(1,2),]), bty = "n", pch=20 , col=colors_border , text.col = "grey", cex=1.2, pt.cex=2)
+#dev.copy(postscript, file=paste0(SavePath,"cog_domain.eps"), height=6, width=6,horizontal=F, onefile=F) 
+dev.off
+```
+#### AgeGroup
+```{r}
+domain_label <- c("Alternation","Visualspatial","Memory","Abstraction","Orientation","Language","TargetDetection")
+MoCA_reg <- read.csv("/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/02_SplitedRCode/03_GeneratedTables/02_after0920/data_MoCA_reg_09210950.csv",header = TRUE)
+# calculate data regressed age and education
+demoinfo <- c("Group","NUM","GEN","EDU","AGE","AgeGroup")
+subrows <- rownames(data)
+MoCAdata <- data[,c(demoinfo, domain_label)]
+MoCA_reg <-  MoCA_reg[,c(demoinfo, domain_label[-c(1,7)])]
+domain_logi <- c("Alternation","TargetDetection")
+oridata_patient <- patientdata[,c("NUM","GEN","EDU","AgeGroup",domain_logi)] 
+oridata_control <- controldata[,c("NUM","GEN","EDU","AgeGroup",domain_logi)]
+lm_regress_p <- list()
+lm_regress_c <- list()
+Bs_MoCA <- data.frame(tasks=domain_logi)
+# Regression
+for (taskn in 1:length(domain_logi)) {
+  names(oridata_patient)[names(oridata_patient) == domain_logi[taskn]] <- "TEST"
+  names(oridata_control)[names(oridata_control) == domain_logi[taskn]] <- "TEST"
+  lm_regress_p[[domain_logi[taskn]]] <- glm(TEST~AgeGroup+EDU, oridata_patient, family = "binomial")
+  lm_regress_c[[domain_logi[taskn]]] <- glm(TEST~AgeGroup+EDU, oridata_control, family = "binomial")
+  Bs_MoCA[taskn,"AGE_patient"] <- as.data.frame(lm_regress_p[[domain_logi[taskn]]]$coefficients)["AgeGroup",1]
+  Bs_MoCA[taskn,"AGE_control"] <- as.data.frame(lm_regress_c[[domain_logi[taskn]]]$coefficients)["AgeGroup",1] 
+  Bs_MoCA[taskn,"EDU_patient"] <- as.data.frame(lm_regress_p[[domain_logi[taskn]]]$coefficients)["EDU",1]
+  Bs_MoCA[taskn,"EDU_control"] <- as.data.frame(lm_regress_c[[domain_logi[taskn]]]$coefficients)["EDU",1]  
+  names(oridata_patient)[names(oridata_patient) == "TEST"] <- domain_logi[taskn]
+  names(oridata_control)[names(oridata_control) == "TEST"] <- domain_logi[taskn]
+  for (subn in 1:length(subrows)) {
+    # Patient
+    if (data[subrows[subn],"Group"]==1){
+      B_AGE <- Bs_MoCA[Bs_MoCA$tasks==domain_logi[taskn],"AGE_patient"]
+      B_EDU <- Bs_MoCA[Bs_MoCA$tasks==domain_logi[taskn],"EDU_patient"]
+      MoCA_reg[subrows[subn],domain_logi[taskn]] <-  MoCAdata[subrows[subn],domain_logi[taskn]] - B_EDU * (MoCAdata[subrows[subn],"EDU"] - 12.23177)
+    }
+    # Control
+    else {
+      B_AGE <- Bs_MoCA[Bs_MoCA$tasks==domain_logi[taskn],"AGE_control"]
+      B_EDU <- Bs_MoCA[Bs_MoCA$tasks==domain_logi[taskn],"EDU_control"]
+      MoCA_reg[subrows[subn],domain_logi[taskn]] <-  MoCAdata[subrows[subn],domain_logi[taskn]] - B_EDU * (MoCAdata[subrows[subn],"EDU"] - 12.23177)
+    }
+  }
+}
+
+MoCA_reg$Alternation[MoCA_reg$Alternation > 1] <- 1
+MoCA_reg$TargetDetection[MoCA_reg$TargetDetection > 1] <- 1
+MoCA_reg$Alternation[MoCA_reg$Alternation < 0] <- 0
+MoCA_reg$TargetDetection[MoCA_reg$TargetDetection <0] <- 0
+
+MoCA_reg$Language <- MoCA_reg$Language/6
+MoCA_reg$Memory <- MoCA_reg$Memory/10
+MoCA_reg$Abstraction <- MoCA_reg$Abstraction/2
+MoCA_reg$Orientation <- MoCA_reg$Orientation/6
+MoCA_reg$Visualspatial <- MoCA_reg$Visualspatial/4
+
+library(fmsb)
+domain_p <- colMeans(MoCA_reg[MoCA_reg$Group==1&MoCA_reg$AGE>=50,domain_label],na.rm = TRUE)
+domain_c <- colMeans(MoCA_reg[MoCA_reg$Group==0&MoCA_reg$AGE>=50,domain_label],na.rm = TRUE)
+domaindata <- as.data.frame(matrix(nrow = 4 , ncol=7))
+colnames(domaindata) <- domain_label
+rownames(domaindata) <- c("1","2","Patient","Contol")
+domaindata[1,] <- rep(1,7)
+domaindata[2,] <- rep(0.2,7)
+domaindata[3,] <- domain_p
+domaindata[4,] <- domain_c
+colors_border=c("#990033","#666666")
+colors_in=c( rgb(0.9,0.0,0.3,0), rgb(0.6,0.6,0.6,0) )
+#x11()
+radarchart( domaindata , axistype=1 , 
+    #custom polygon
+    pcol=colors_border , pfcol=colors_in , plwd=1 , plty=1,
+    #custom the grid
+    cglcol="black", cglty=3, axislabcol="grey", caxislabels=seq(20,100,20),cglwd=0.6,
+    #custom label
+    vlcex=0.8 
+    ) 
+legend(x=0.9, y=1.3, legend = rownames(domaindata[-c(1,2),]), bty = "n", pch=20 , col=colors_border , text.col = "grey", cex=1.2, pt.cex=2)
+dev.copy(postscript, file=paste0(SavePath,"cog_domain.eps"), height=6, width=6,horizontal=F, onefile=F) 
+dev.off
+```
+#### Use DATA_REG 
+```{r}
+domain_label <- c("Language","Memory","Abstraction","Orientation","Visualspatial")
+# calculate data regressed age and education
+MoCA_reg <- read.csv("/Users/OlfactionLab/06_COVID-19/04_DataAnalysis/02_SplitedRCode/03_GeneratedTables/02_after0920/data_MoCA_reg_09210950.csv",header = TRUE)
+demoinfo <- c("Group","NUM","GEN","EDU","AGE","AgeGroup")
+subrows <- rownames(data)
+MoCA_reg <- MoCA_reg[,c(demoinfo, domain_label)]
+
+MoCA_reg$Language <- MoCA_reg$Language/6
+MoCA_reg$Memory <- MoCA_reg$Memory/10
+MoCA_reg$Abstraction <- MoCA_reg$Abstraction/2
+MoCA_reg$Orientation <- MoCA_reg$Orientation/6
+MoCA_reg$Visualspatial <- MoCA_reg$Visualspatial/4
+```
+```{r}
+library(fmsb)
+domain_p <- colMeans(MoCA_reg[MoCA_reg$Group==1&MoCA_reg$AGE>=50,domain_label],na.rm = TRUE)
+domain_c <- colMeans(MoCA_reg[MoCA_reg$Group==0&MoCA_reg$AGE>=50,domain_label],na.rm = TRUE)
+domaindata <- as.data.frame(matrix(nrow = 4 , ncol=5))
+colnames(domaindata) <- domain_label
+rownames(domaindata) <- c("1","2","Patient","Contol")
+domaindata[1,] <- rep(1,5)
+domaindata[2,] <- rep(0.2,5)
+domaindata[3,] <- domain_p
+domaindata[4,] <- domain_c
+colors_border=c("#990033","#666666")
+colors_in=c( rgb(0.9,0.0,0.3,0), rgb(0.6,0.6,0.6,0) )
+#x11()
+radarchart( domaindata , axistype=1 , 
+    #custom polygon
+    pcol=colors_border , pfcol=colors_in , plwd=1 , plty=1,
+    #custom the grid
+    cglcol="black", cglty=3, axislabcol="grey", caxislabels=seq(20,100,20),cglwd=0.6,
+    #custom label
+    vlcex=0.8 
+    ) 
+legend(x=0.9, y=1.3, legend = rownames(domaindata[-c(1,2),]), bty = "n", pch=20 , col=colors_border , text.col = "grey", cex=1.2, pt.cex=2)
+#dev.copy(postscript, file=paste0(SavePath,"cog_domain.eps"), height=6, width=6,horizontal=F, onefile=F) 
+dev.off
+```
+## 4. Recovery Curve
+### Recovery Puzzles
+```{r RP}
+# OLFACTION
+tasklist <- c("OT","OD","OI")
+plotRT <- 2:6
+RTnum <- length(plotRT)
+plotsta <- data.frame(reRT=numeric(),mean=numeric(),se=numeric(),tasks=character())
+plotsta[1:(RTnum*length(tasklist)),"reRT"] <- rep(plotRT,length(tasklist))
+plotsta[1:(RTnum*length(tasklist)),"tasks"] <- rep(tasklist,each=RTnum)
+for (taskn in 1:length(tasklist)) {
+sta <- summarySE(z_data[z_data$Group==1,c(tasklist[taskn],"reRT")],measurevar = tasklist[taskn],groupvars = "reRT",na.rm = TRUE)
+for (rtn in 1:4) {
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"mean"] <- na.omit(sta[sta$reRT==plotRT[rtn],tasklist[taskn]])
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"se"] <- na.omit(sta[sta$reRT==plotRT[rtn],"se"])
+}
+}
+plotsta_OT <- summarySE(z_data_retest2,measurevar = "OT",groupvars = "TestLab",na.rm = TRUE)
+plotsta_OD <- summarySE(z_data_retest2,measurevar = "OD",groupvars = "TestLab",na.rm = TRUE)
+plotsta_OI <- summarySE(z_data_retest3,measurevar = "OI",groupvars = "TestLab",na.rm = TRUE)
+# Retest 2
+plotsta[5,"mean"] <- plotsta_OT[plotsta_OT$TestLab ==2,"OT"]
+plotsta[10,"mean"] <- plotsta_OD[plotsta_OD$TestLab ==2,"OD"]
+plotsta[15,"mean"] <- plotsta_OI[plotsta_OI$TestLab ==2,"OI"]
+plotsta[5,"se"] <- plotsta_OT[plotsta_OT$TestLab ==2,"se"]
+plotsta[10,"se"] <- plotsta_OD[plotsta_OD$TestLab ==2,"se"]
+plotsta[15,"se"] <- plotsta_OI[plotsta_OI$TestLab ==2,"se"]
+
+Olf_reRT <- ggplot(plotsta,aes(x=reRT, y=mean))+
+  geom_line(data = plotsta[plotsta$tasks=="OT",],size = 0.3,color = "#006633")+
+  geom_line(data = plotsta[plotsta$tasks=="OD",],size = 0.3,color = "#226688")+
+  geom_line(data = plotsta[plotsta$tasks=="OI",],size = 0.3,color = "#554433")+
+  geom_point(data = plotsta[plotsta$tasks=="OT",],size =1,color = "#006633",shape=16)+
+  geom_point(data = plotsta[plotsta$tasks=="OD",],size =1,color = "#226688",shape=15)+
+  geom_point(data = plotsta[plotsta$tasks=="OI",],size =1,color = "#554433",shape=17)+
+  #geom_point(data = plotsta_RT66[plotsta_RT66$tasks=="OT",],size =1,color = "#006633",shape=16)+
+  #geom_point(data = plotsta_RT66[plotsta_RT66$tasks=="OD",],size =1,color = "#226688",shape=16)+
+  geom_hline(yintercept=0, colour="black", linetype="dashed")+
+  geom_errorbar(data = plotsta[plotsta$tasks=="OT",],aes(x=reRT,ymin = mean-se, ymax = mean+se),size = 0.3,width = 0,color = "#006633")+ 
+  geom_errorbar(data = plotsta[plotsta$tasks=="OD",],aes(x=reRT,ymin = mean-se, ymax = mean+se),size = 0.3,width = 0,color = "#226688")+
+  geom_errorbar(data = plotsta[plotsta$tasks=="OI",],aes(x=reRT,ymin = mean-se, ymax = mean+se),size = 0.3,width = 0,color = "#554433")+
+  scale_y_continuous(expand = c(0,0),limits = c(-1.5,1.5))+
+  ylab("")+xlab("")+
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())
+print(Olf_reRT)
+ggsave(paste0(SavePath,"TimeBins_Puzzles_TDI_1002.eps"), width = 1.4, height = 3)
+
+# Gustation
+tasklist <- c("Gus")
+plotRT <- 2:6
+RTnum <- length(plotRT)
+plotsta <- data.frame(reRT=numeric(),mean=numeric(),se=numeric(),tasks=character())
+plotsta[1:(RTnum*length(tasklist)),"reRT"] <- rep(plotRT,length(tasklist))
+plotsta[1:(RTnum*length(tasklist)),"tasks"] <- rep(tasklist,each=RTnum)
+for (taskn in 1:length(tasklist)) {
+sta <- summarySE(z_data[z_data$Group==1,c(tasklist[taskn],"reRT")],measurevar = tasklist[taskn],groupvars = "reRT",na.rm = TRUE)
+for (rtn in 1:4) {
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"mean"] <- na.omit(sta[sta$reRT==plotRT[rtn],tasklist[taskn]])
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"se"] <- na.omit(sta[sta$reRT==plotRT[rtn],"se"])
+}
+}
+plotsta_Gus <- summarySE(z_data_retest2,measurevar = "Gus",groupvars = "TestLab",na.rm = TRUE)
+# Retest 2
+plotsta[5,"mean"] <- plotsta_Gus[plotsta_Gus$TestLab ==2,"Gus"]
+plotsta[5,"se"] <- plotsta_Gus[plotsta_Gus$TestLab ==2,"se"]
+
+Gus_reRT <- ggplot(plotsta,aes(x=reRT, y=mean))+
+  geom_line(data = plotsta[1:RTnum,],size = 0.3,color = "#006633")+
+  geom_point(data = plotsta[1:RTnum,],size =1,color = "#006633",shape=16)+
+  geom_hline(yintercept=0, colour="black", linetype="dashed")+
+  geom_errorbar(data = plotsta[1:RTnum,],aes(x=reRT,ymin = mean-se, ymax = mean+se),size = 0.3,width = 0,color = "#006633")+ 
+  scale_y_continuous(expand = c(0,0),limits = c(-1.5,1.5))+
+  ylab("")+xlab("")+
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())
+print(Gus_reRT)
+ggsave(paste0(SavePath,"TimeBins_Puzzles_Gus.eps"), width = 1.4, height = 3)
+
+# Chemesthsis
+tasklist <- c("Tri")
+plotRT <- 2:6
+RTnum <- length(plotRT)
+plotsta <- data.frame(reRT=numeric(),mean=numeric(),se=numeric(),tasks=character())
+plotsta[1:(RTnum*length(tasklist)),"reRT"] <- rep(plotRT,length(tasklist))
+plotsta[1:(RTnum*length(tasklist)),"tasks"] <- rep(tasklist,each=RTnum)
+for (taskn in 1:length(tasklist)) {
+sta <- summarySE(z_data[z_data$Group==1,c(tasklist[taskn],"reRT")],measurevar = tasklist[taskn],groupvars = "reRT",na.rm = TRUE)
+for (rtn in 1:4) {
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"mean"] <- na.omit(sta[sta$reRT==plotRT[rtn],tasklist[taskn]])
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"se"] <- na.omit(sta[sta$reRT==plotRT[rtn],"se"])
+}
+}
+plotsta_Tri <- summarySE(z_data_retest3,measurevar = "Tri",groupvars = "TestLab",na.rm = TRUE)
+# Retest 2
+plotsta[5,"mean"] <- plotsta_Tri[plotsta_Tri$TestLab ==2,"Tri"]
+plotsta[5,"se"] <- plotsta_Tri[plotsta_Tri$TestLab ==2,"se"]
+
+Tri_reRT <- ggplot(plotsta,aes(x=reRT, y=mean))+
+  geom_line(data = plotsta[1:RTnum,],size = 0.3,color = "#006633")+
+  geom_point(data = plotsta[1:RTnum,],size =1,color = "#006633",shape=16)+
+  geom_hline(yintercept=0, colour="black", linetype="dashed")+
+  geom_errorbar(data = plotsta[1:RTnum,],aes(x=reRT,ymin = mean-se, ymax = mean+se),size = 0.3,width = 0,color = "#006633")+ 
+  scale_y_continuous(expand = c(0,0),limits = c(-1.5,1.5))+
+  ylab("")+xlab("")+
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())
+print(Tri_reRT)
+ggsave(paste0(SavePath,"TimeBins_Puzzles_Tri_1002.eps"), width = 1.4, height = 3)
+
+# MoCA
+tasklist <- c("MoCA")
+plotRT <- 2:6
+RTnum <- length(plotRT)
+plotsta <- data.frame(reRT=numeric(),mean=numeric(),se=numeric(),tasks=character())
+plotsta[1:(RTnum*length(tasklist)),"reRT"] <- rep(plotRT,length(tasklist))
+plotsta[1:(RTnum*length(tasklist)),"tasks"] <- rep(tasklist,each=RTnum)
+for (taskn in 1:length(tasklist)) {
+sta <- summarySE(z_data[z_data$Group==1,c(tasklist[taskn],"reRT")],measurevar = tasklist[taskn],groupvars = "reRT",na.rm = TRUE)
+for (rtn in 1:4) {
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"mean"] <- na.omit(sta[sta$reRT==plotRT[rtn],tasklist[taskn]])
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"se"] <- na.omit(sta[sta$reRT==plotRT[rtn],"se"])
+}
+}
+plotsta_MoCA <- summarySE(z_data_retest3,measurevar = "MoCA",groupvars = "TestLab",na.rm = TRUE)
+# Retest 2
+plotsta[5,"mean"] <- plotsta_MoCA[plotsta_MoCA$TestLab ==2,"MoCA"]
+plotsta[5,"se"] <- plotsta_MoCA[plotsta_MoCA$TestLab ==2,"se"]
+
+MoCA_reRT <- ggplot(plotsta,aes(x=reRT, y=mean))+
+  geom_line(data = plotsta[1:RTnum,],size = 0.3,color = "#006633")+
+  geom_point(data = plotsta[1:RTnum,],size =1,color = "#006633",shape=16)+
+  geom_hline(yintercept=0, colour="black", linetype="dashed")+
+  geom_errorbar(data = plotsta[1:RTnum,],aes(x=reRT,ymin = mean-se, ymax = mean+se),size = 0.3,width = 0,color = "#006633")+ 
+  scale_y_continuous(expand = c(0,0),limits = c(-1.5,1.5))+
+  ylab("")+xlab("")+
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())
+print(MoCA_reRT)
+ggsave(paste0(SavePath,"TimeBins_Puzzles_MoCA.eps"), width = 1.4, height = 3)
+
+# go/no-go
+tasklist <- c("d")
+plotRT <- 2:6
+RTnum <- length(plotRT)
+plotsta <- data.frame(reRT=numeric(),mean=numeric(),se=numeric(),tasks=character())
+plotsta[1:(RTnum*length(tasklist)),"reRT"] <- rep(plotRT,length(tasklist))
+plotsta[1:(RTnum*length(tasklist)),"tasks"] <- rep(tasklist,each=RTnum)
+for (taskn in 1:length(tasklist)) {
+sta <- summarySE(z_data[z_data$Group==1,c(tasklist[taskn],"reRT")],measurevar = tasklist[taskn],groupvars = "reRT",na.rm = TRUE)
+for (rtn in 1:4) {
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"mean"] <- na.omit(sta[sta$reRT==plotRT[rtn],tasklist[taskn]])
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"se"] <- na.omit(sta[sta$reRT==plotRT[rtn],"se"])
+}
+}
+plotsta_d <- summarySE(z_data_retest3,measurevar = "d",groupvars = "TestLab",na.rm = TRUE)
+# Retest 2
+plotsta[5,"mean"] <- plotsta_d[plotsta_d$TestLab ==2,"d"]
+plotsta[5,"se"] <- plotsta_d[plotsta_d$TestLab ==2,"se"]
+Go_reRT <- ggplot(plotsta,aes(x=reRT, y=mean))+
+  geom_line(data = plotsta[1:RTnum,],size = 0.3,color = "#006633")+
+  geom_point(data = plotsta[1:RTnum,],size =1,color = "#006633",shape=16)+
+  geom_hline(yintercept=0, colour="black", linetype="dashed")+
+  geom_errorbar(data = plotsta[1:RTnum,],aes(x=reRT,ymin = mean-se, ymax = mean+se),size = 0.3,width = 0,color = "#006633")+ 
+  scale_y_continuous(expand = c(0,0),limits = c(-1.5,1.5))+
+  ylab("")+xlab("")+
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())
+print(Go_reRT)
+ggsave(paste0(SavePath,"TimeBins_Puzzles_Go_1002.eps"), width = 1.4, height = 3)
+
+# Task switch
+tasklist <- c("SwitchCost")
+plotRT <- 2:6
+RTnum <- length(plotRT)
+plotsta <- data.frame(reRT=numeric(),mean=numeric(),se=numeric(),tasks=character())
+plotsta[1:(RTnum*length(tasklist)),"reRT"] <- rep(plotRT,length(tasklist))
+plotsta[1:(RTnum*length(tasklist)),"tasks"] <- rep(tasklist,each=RTnum)
+for (taskn in 1:length(tasklist)) {
+sta <- summarySE(z_data[z_data$Group==1,c(tasklist[taskn],"reRT")],measurevar = tasklist[taskn],groupvars = "reRT",na.rm = TRUE)
+for (rtn in 1:4) {
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"mean"] <- na.omit(sta[sta$reRT==plotRT[rtn],tasklist[taskn]])
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"se"] <- na.omit(sta[sta$reRT==plotRT[rtn],"se"])
+}
+}
+plotsta_SwitchCost <- summarySE(z_data_retest3,measurevar = "SwitchCost",groupvars = "TestLab",na.rm = TRUE)
+# Retest 2
+plotsta[5,"mean"] <- plotsta_SwitchCost[plotsta_SwitchCost$TestLab ==2,"SwitchCost"]
+plotsta[5,"se"] <- plotsta_SwitchCost[plotsta_SwitchCost$TestLab ==2,"se"]
+
+SC_reRT <- ggplot(plotsta,aes(x=reRT, y=mean))+
+  geom_line(data = plotsta[1:RTnum,],size = 0.3,color = "#006633")+
+  geom_point(data = plotsta[1:RTnum,],size =1,color = "#006633",shape=16)+
+  geom_hline(yintercept=0, colour="black", linetype="dashed")+
+  geom_errorbar(data = plotsta[1:RTnum,],aes(x=reRT,ymin = mean-se, ymax = mean+se),size = 0.3,width = 0,color = "#006633")+ 
+  scale_y_continuous(expand = c(0,0),limits = c(-1.5,1.5))+
+  ylab("")+xlab("")+
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())
+print(SC_reRT)
+ggsave(paste0(SavePath,"TimeBins_Puzzles_SC_1002.eps"), width = 1.4, height = 3)
+
+# BDI.II
+tasklist <- c("BDI.II")
+plotRT <- 2:7
+RTnum <- length(plotRT)
+plotsta <- data.frame(reRT=numeric(),mean=numeric(),se=numeric(),tasks=character())
+plotsta[1:(RTnum*length(tasklist)),"reRT"] <- rep(plotRT,length(tasklist))
+plotsta[1:(RTnum*length(tasklist)),"tasks"] <- rep(tasklist,each=RTnum)
+for (taskn in 1:length(tasklist)) {
+sta <- summarySE(z_data[z_data$Group==1,c(tasklist[taskn],"reRT")],measurevar = tasklist[taskn],groupvars = "reRT",na.rm = TRUE)
+for (rtn in 1:4) {
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"mean"] <- na.omit(sta[sta$reRT==plotRT[rtn],tasklist[taskn]])
+  plotsta[plotsta$reRT==plotRT[rtn] & plotsta$tasks==tasklist[taskn],"se"] <- na.omit(sta[sta$reRT==plotRT[rtn],"se"])
+}
+}
+plotsta_BDI <- summarySE(z_data_retest2,measurevar = "BDI.II",groupvars = "TestLab",na.rm = TRUE)
+plotsta_BDI3 <- summarySE(z_data_retest3,measurevar = "BDI.II",groupvars = "TestLab",na.rm = TRUE)
+# Retest 2
+plotsta[6,"reRT"] <- 6
+plotsta[5,"mean"] <- plotsta_BDI[plotsta_BDI$TestLab ==2,"BDI.II"]
+plotsta[5,"se"] <- plotsta_BDI[plotsta_BDI$TestLab ==2,"se"]
+plotsta[6,"mean"] <- plotsta_BDI3[plotsta_BDI3$TestLab ==2,"BDI.II"]
+plotsta[6,"se"] <- plotsta_BDI3[plotsta_BDI3$TestLab ==2,"se"]
+
+BDI_reRT <- ggplot(plotsta,aes(x=reRT, y=mean))+
+  geom_line(data = plotsta[1:RTnum,],size = 0.3,color = "#006633")+
+  geom_point(data = plotsta,size =1,color = "#006633",shape=16)+
+  geom_hline(yintercept=0, colour="black", linetype="dashed")+
+  geom_errorbar(data = plotsta,aes(x=reRT,ymin = mean-se, ymax = mean+se),size = 0.3,width = 0,color = "#006633")+ 
+  scale_y_continuous(expand = c(0,0),limits = c(-1.5,1.5))+
+  ylab("")+xlab("")+
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())
+print(BDI_reRT)
+ggsave(paste0(SavePath,"TimeBins_Puzzles_BDI_1002.eps"), width = 1.4, height = 3)
+
+
+```
+## 5.Cognitive task
+### (1) SwitchCost
+```{r SwitchCost, echo=FALSE}
+tempdata_p <- data.frame(Mean=numeric(),SD=numeric())
+tempdata_c <- data.frame(Mean=numeric(),SD=numeric())
+SamPoNum <- as.data.frame(table(na.omit(z_data[,c("Group","SwitchCost")])$Group))
+colnames(SamPoNum) <- c("Group","Number")
+RepTim <- 1000
+patient_sc <- data.frame(Mean=numeric(),SD=numeric())
+control_sc <- data.frame(Mean=numeric(),SD=numeric())
+oridata_p <- na.omit(z_data[z_data$Group==1,"SwitchCost"])
+oridata_c <- na.omit(z_data[z_data$Group==0,"SwitchCost"])
+# Bootstrap
+for (repn in 1:RepTim) {
+   sampleseq_p<- sample(1:length(oridata_p),SamPoNum[SamPoNum$Group==1,"Number"],replace = TRUE)
+   tempdata_p[repn,"Mean"] <- mean(oridata_p[sampleseq_p],na.rm = TRUE)
+   tempdata_p[repn,"SD"] <- sd(oridata_p[sampleseq_p],na.rm = TRUE)
+   sampleseq_c<- sample(1:length(oridata_c),SamPoNum[SamPoNum$Group==0,"Number"],replace = TRUE)
+   tempdata_c[repn,"Mean"] <- mean(oridata_c[sampleseq_c],na.rm = TRUE)
+   tempdata_c[repn,"SD"] <- sd(oridata_c[sampleseq_c],na.rm = TRUE)
+}
+
+# Build dataset with different distributions
+plotdata <- data.frame(
+  type = c( rep("Patient", 1000), rep("Control", 1000) )
+)
+plotdata[1:1000,"Mean"] <- tempdata_p$Mean
+plotdata[1001:2000,"Mean"] <- tempdata_c$Mean
+
+# Represent it
+xfit_p <- seq(min(plotdata[plotdata$type=="Patient","Mean"]),max(plotdata[plotdata$type=="Patient","Mean"]),length=100)
+yfit_p <- dnorm(xfit_p,mean(plotdata[plotdata$type=="Patient","Mean"]),sd(plotdata[plotdata$type=="Patient","Mean"]))
+xfit_c<-seq(min(plotdata[plotdata$type=="Control","Mean"]),max(plotdata[plotdata$type=="Control","Mean"]),length=100)
+yfit_c<-dnorm(xfit_c,mean(plotdata[plotdata$type=="Control","Mean"]),sd(plotdata[plotdata$type=="Control","Mean"]))
+
+x11()
+histBy(plotdata,var="Mean",group = "type",density = FALSE ,breaks = 30)
+lines(xfit_p,yfit_p,col="red",lwd=1)
+lines(xfit_c,yfit_c,col="black",lwd=1)
+dev.copy(postscript, file=paste0(SavePath,"SwitchCost.eps"), height=6, width=6,horizontal=F, onefile=F)
+dev.off
+
+```
+### (2) Go/no-go
+```{r d, echo=FALSE}
+tempdata_p <- data.frame(Mean=numeric(),SD=numeric())
+tempdata_c <- data.frame(Mean=numeric(),SD=numeric())
+SamPoNum <- as.data.frame(table(na.omit(z_data[,c("Group","d")])$Group))
+colnames(SamPoNum) <- c("Group","Number")
+RepTim <- 1000
+patient_sc <- data.frame(Mean=numeric(),SD=numeric())
+control_sc <- data.frame(Mean=numeric(),SD=numeric())
+oridata_p <- na.omit(z_data[z_data$Group==1,"d"])
+oridata_c <- na.omit(z_data[z_data$Group==0,"d"])
+# Bootstrap
+for (repn in 1:RepTim) {
+   sampleseq_p<- sample(1:length(oridata_p),SamPoNum[SamPoNum$Group==1,"Number"],replace = TRUE)
+   tempdata_p[repn,"Mean"] <- mean(oridata_p[sampleseq_p],na.rm = TRUE)
+   tempdata_p[repn,"SD"] <- sd(oridata_p[sampleseq_p],na.rm = TRUE)
+   sampleseq_c<- sample(1:length(oridata_c),SamPoNum[SamPoNum$Group==0,"Number"],replace = TRUE)
+   tempdata_c[repn,"Mean"] <- mean(oridata_c[sampleseq_c],na.rm = TRUE)
+   tempdata_c[repn,"SD"] <- sd(oridata_c[sampleseq_c],na.rm = TRUE)
+}
+
+# Build dataset with different distributions
+plotdata <- data.frame(
+  type = c( rep("Patient", 1000), rep("Control", 1000) )
+)
+plotdata[1:1000,"Mean"] <- tempdata_p$Mean
+plotdata[1001:2000,"Mean"] <- tempdata_c$Mean
+
+# Represent it
+xfit_p <- seq(min(plotdata[plotdata$type=="Patient","Mean"]),max(plotdata[plotdata$type=="Patient","Mean"]),length=100)
+yfit_p <- dnorm(xfit_p,mean(plotdata[plotdata$type=="Patient","Mean"]),sd(plotdata[plotdata$type=="Patient","Mean"]))
+xfit_c<-seq(min(plotdata[plotdata$type=="Control","Mean"]),max(plotdata[plotdata$type=="Control","Mean"]),length=100)
+yfit_c<-dnorm(xfit_c,mean(plotdata[plotdata$type=="Control","Mean"]),sd(plotdata[plotdata$type=="Control","Mean"]))
+
+#x11()
+histBy(plotdata,var="Mean",group = "type",density = FALSE ,breaks = 30, ylim=c(0,8.5))
+lines(xfit_p,yfit_p,col="red",lwd=1)
+lines(xfit_c,yfit_c,col="black",lwd=1)
+dev.copy(postscript, file=paste0(SavePath,"Go_no_go.eps"), height=6, width=6,horizontal=F, onefile=F)
+dev.off
+
+```
+## 6. Test-retest comparison (66)
+### (1) Rawdata bars
+#### a. OT comparision
+```{r OT-2tests,echo=FALSE}
+plotsta <- summarySE(Retestdata,measurevar = "OT",groupvars = "TEST",na.rm = TRUE)
+Retestdata$TEST <- as.factor(Retestdata$TEST)
+plotsta$TEST <- as.factor(plotsta$TEST)
+ggplot(Retestdata,aes_string(x="TEST",y="OT"),na.rm = TRUE)+
+  geom_bar(data=plotsta,aes(fill = TEST,x=TEST,y=OT),stat = "identity",width = 0.7)+
+  geom_errorbar(data=plotsta,aes(ymin = OT-se ,ymax = OT+se),width = 0.2,position = position_dodge(0.9))+
+  scale_fill_manual(breaks = c("1","2","3"),values = c("#883333","#777777","#999999"))+
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())+
+  scale_y_continuous(expand = c(0,0),limits = c(0,16))+
+  # geom_jitter(data=Retestdata[1:132,c("OT","TEST")],aes(x=TEST,y=OT), width = 0.3,size=1)
+ggsave(paste0(SavePath,"Test1_3&CONTROL_OT.eps"), width = 3, height = 3)
+```
+
+#### b. OD comparision
+```{r OD-2tests,echo=FALSE}
+plotsta <- summarySE(Retestdata,measurevar = "OD",groupvars = "TEST",na.rm = TRUE)
+Retestdata$TEST <- as.factor(Retestdata$TEST)
+plotsta$TEST <- as.factor(plotsta$TEST)
+ggplot(Retestdata,aes_string(x="TEST",y="OD"),na.rm = TRUE)+
+  geom_bar(data=plotsta,aes(fill = TEST,x=TEST,y=OD),stat = "identity",width = 0.7)+
+  geom_errorbar(data=plotsta,aes(ymin = OD-se ,ymax = OD+se),width = 0.2,position = position_dodge(0.9))+
+  scale_fill_manual(breaks = c("1","2","3"),values = c("#883333","#777777","#999999"))+
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())+
+  scale_y_continuous(expand = c(0,0),limits = c(0,10),breaks = seq(0,10,2))
+  #geom_jitter(data=Retestdata[1:132,c("OD","TEST")],aes(x=TEST,y=OD), shape = 18,width = 0.3,size=1.5)
+ggsave(paste0(SavePath,"Test1_3&CONTROL_OD.eps"), width = 3, height = 3)
+```
+### (2) Z score bars
+```{r OT_OD_zscore}
+plotsta_OT <- summarySE(z_data_retest2,measurevar = "OT",groupvars = "TestLab",na.rm = TRUE)
+plotsta_OD <- summarySE(z_data_retest2,measurevar = "OD",groupvars = "TestLab",na.rm = TRUE)
+plotsta <- data.frame(Test=c("OT","OT","OD","OD"),TestOrder=c("1","3","1","3"),TestIndex=1:4)
+plotsta$Mean <- c(plotsta_OT$OT, plotsta_OD$OD)
+plotsta$SE <- c(plotsta_OT$se, plotsta_OD$se)
+plotsta$TestIndex <- as.factor(plotsta$TestIndex)
+ggplot(plotsta,aes_string(x="TestIndex",y="Mean",fill="Test"),na.rm = TRUE)+
+  geom_bar(stat = "identity",width = 0.7)+
+  geom_errorbar(data=plotsta,aes(ymin = Mean-SE ,ymax = Mean+SE),width = 0.2,position = position_dodge(0.9))+
+  geom_hline(yintercept=0, colour="black", linetype="dashed")+
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())+
+  scale_x_discrete(labels=c("Test1","Retest2","Test1","Retest2"))+
+  scale_y_continuous(expand = c(0,0),limits = c(-1.3,0.8))
+
+ggsave(paste0(SavePath,"Test1_3_zscores.eps"), width = 3.5, height = 3)
+```
+### (3) Violin Graph
+```{r violin}
+controldata_z <- z_data[z_data$Group == 0,c("OT","OD","OI","Gus","Tri","MoCA","BDI.II")]
+controldata_z <- melt(controldata_z, variable.name = "Task", value.name = "Score")
+Violin_data$Task <- factor(Violin_data$Task,levels = c("OT","OD","OI","Gus","Tri","MoCA","BDI.II"),ordered = TRUE)
+Violin_data$Test <- factor(Violin_data$Test,levels = c("1","2"),ordered = TRUE)
+violin <- ggplot(data=Violin_data, aes(x=Task, y=Score,fill=Test)) + 
+  geom_split_violin(trim=FALSE,color="black",na.rm = TRUE, scale = "area") +
+  geom_jitter(aes(group = Task,color =Test), size = 0.1, position = position_dodge2(width = 0.5, preserve = "single")) +
+  scale_fill_manual(values = c("red","blue")) + 
+  geom_boxplot(data = controldata_z, aes(x=Task, y=Score,fill = NULL), width = 0.05,outlier.shape = NA) +
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())
+  
+print(violin)
+
+ggsave(paste0(SavePath,"Retest_violin_220219.eps"), width = 5, height = 3)
+```
+### (4) Violin Graph Puzzles
+```{r}
+Violin_data$Task <- factor(Violin_data$Task,levels = c("OT","OD","OI","Gus","Tri","MoCA","BDI.II"),ordered = TRUE)
+Violin_data$Test <- factor(Violin_data$Test,levels = c("1","2"),ordered = TRUE)
+violin <- ggplot(data=Violin_data, aes(x=Task, y=RawData,fill=Test)) + 
+  geom_split_violin(trim=FALSE,color="black",na.rm = TRUE, scale = "area") +
+  geom_jitter(aes(group = Task,color =Test), size = 0.1, position = position_dodge2(width = 0.5, preserve = "single")) +
+  scale_fill_manual(values = c("red","blue")) + 
+  theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())
+  
+print(violin)
+
+#ggsave(paste0(SavePath,"Retest_violins_puzzles.eps"), width = 10, height = 3)
+```
+## 7. Asyptomatic figures
+### (1). All tasks
+```{r all_tasks_asyptomatic}
+# Prepare Dataset
+plotlabels <- c("OLFACTION","OT","OD","OI","Gus","Tri","MoCA","Language","Memory","Visualspatial","Orientation","Abstraction","d","SwitchCost","BDI.II")
+plotdata <- z_data_asyptomatic[z_data_asyptomatic$Group==1,c("Group","NUM",plotlabels)]#Only extract patient data
+plotsta_con <- data.frame(tests=character(),mean=numeric(),se=numeric())
+plotsta_con[1:length(plotlabels),"tests"] <- plotlabels
+plotsta_all <- data.frame(tests=character(),mean=numeric(),se=numeric())
+plotsta_all[1:length(plotlabels),"tests"] <- plotlabels
+for (n in 1:length(plotlabels)) {
+  sta_con <- summarySE(z_data_asyptomatic[z_data_asyptomatic$Group==0,c("Group","NUM",plotlabels)],measurevar = plotlabels[n],groupvars = NULL,na.rm = TRUE)
+  sta_all <- summarySE(plotdata,measurevar = plotlabels[n],groupvars = NULL,na.rm = TRUE)
+  plotsta_con[n,"mean"] <- sta_con[,plotlabels[n]]
+  plotsta_con[n,"se"] <- sta_con[,"se"]
+  plotsta_all[n,"mean"] <- sta_all[,plotlabels[n]]
+  plotsta_all[n,"se"] <- sta_all[,"se"]
+}
+# draw graph
+plotsta_con$tests <- factor(plotsta_con$tests,levels = rev(plotlabels),ordered = TRUE)
+plotsta_all$tests <- factor(plotsta_all$tests,levels = rev(plotlabels),ordered = TRUE)
+AllTasks_asymptomatic <- ggplot(plotsta_all, aes(x=mean, y = tests))+
+  # aesthetic settings
+    geom_vline(xintercept=0, colour="black", linetype="dashed")+
+    scale_x_continuous(expand = c(0,0),limits = c(-1.1,1.1))+
+    ylab("")+xlab("")+
+    theme(panel.background = element_blank(),axis.ticks.length.y = unit(-0.1,"cm"),axis.line = element_line(colour = "black"),legend.text=element_text(), legend.title = element_text(), axis.text.y=element_text(margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm")), axis.text.x = element_text())+
+  # controls
+    geom_point(data = plotsta_con, inherit.aes = FALSE, aes(x = mean, y = tests), size = 2.5, alpha = 1, colour = "black")+
+    geom_errorbar(data = plotsta_con, aes(y = tests,xmin = mean-se ,xmax = mean+se),size = 0.2,width = 0)+
+  # all patients
+    geom_point(data = plotsta_all,inherit.aes = FALSE, aes(x = mean, y = tests), size = 2.5, alpha = 1, colour = "gray")+
+    geom_errorbar(data = plotsta_all, aes(y = tests,xmin = mean-se ,xmax = mean+se),size = 0.2, width = 0)
+
+print(AllTasks_asymptomatic)
+
+
+ggsave(paste0(SavePath,"Asyptomatic_AllTests_0923.eps") , width = 5, height = 5) 
+
+```
+### (2). Gustation accuracy
+```{r gustation_asymptomatic}
+Gus_label <- c("sour","sweet","bitter","salty","umami")
+Gus_corlabel <- c("c_sour","c_sweet","c_bitter","c_salty","c_umami")
+library(fmsb)
+gus_p <- colMeans(z_data_asyptomatic[z_data_asyptomatic$Group==1,Gus_corlabel],na.rm = TRUE)
+gus_c <- colMeans(z_data_asyptomatic[z_data_asyptomatic$Group==0,Gus_corlabel],na.rm = TRUE)
+gusdata <- as.data.frame(matrix(nrow = 4 , ncol=5))
+colnames(gusdata) <- Gus_label
+rownames(gusdata) <- c("1","2","Patient","Contol")
+gusdata[1,] <- rep(1,5)
+gusdata[2,] <- rep(0.6,5)
+gusdata[3,] <- gus_p
+gusdata[4,] <- gus_c
+colors_border=c("#990033","#666666")
+colors_in=c( rgb(0.9,0.0,0.3,0.2), rgb(0.6,0.6,0.6,0.2) )
+#x11()
+radarchart( gusdata , axistype=1 , 
+    #custom polygon
+    pcol=colors_border , pfcol=colors_in , plwd=1 , plty=1,
+    #custom the grid
+    cglcol="black", cglty=3, axislabcol="grey", caxislabels=seq(60,100,10),cglwd=0.6,
+    #custom label
+    vlcex=0.8 
+    ) 
+legend(x=0.9, y=1.3, legend = rownames(gusdata[-c(1,2),]), bty = "n", pch=20 , col=colors_border , text.col = "grey", cex=1.2, pt.cex=2)
+dev.copy(postscript, file=paste0(SavePath,"GUS_accuracy_asymptomatic.eps"), height=6, width=6,horizontal=F, onefile=F) 
+dev.off
+```
+
+
